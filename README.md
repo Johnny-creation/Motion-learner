@@ -1,165 +1,233 @@
-# SAM 3D
+# SAM 3D Body - 个人使用指南
 
-SAM 3D Body is one part of SAM 3D, a pair of models for object and human mesh reconstruction. If you’re looking for SAM 3D Objects, [click here](https://github.com/facebookresearch/sam-3d-objects).
+基于 Meta 的 SAM 3D Body 模型，从单张图片重建3D人体网格，并提供网页查看器进行交互式查看。
 
-# SAM 3D Body: Robust Full-Body Human Mesh Recovery
+## 目录结构
 
-<p align="left">
-<a href="https://ai.meta.com/research/publications/sam-3d-body-robust-full-body-human-mesh-recovery/"><img src='https://img.shields.io/badge/Meta_AI-Paper-4A90E2?logo=meta&logoColor=white' alt='Paper'></a>
-<a href="https://ai.meta.com/blog/sam-3d/"><img src='https://img.shields.io/badge/Project_Page-Blog-9B72F0?logo=googledocs&logoColor=white' alt='Blog'></a>
-<a href="https://huggingface.co/datasets/facebook/sam-3d-body-dataset"><img src='https://img.shields.io/badge/🤗_Hugging_Face-Dataset-F59500?logoColor=white' alt='Dataset'></a>
-<a href="https://www.aidemos.meta.com/segment-anything/editor/convert-body-to-3d"><img src='https://img.shields.io/badge/🤸_Playground-Live_Demo-E85D5D?logoColor=white' alt='Live Demo'></a>
-</p>
-
-[Xitong Yang](https://scholar.google.com/citations?user=k0qC-7AAAAAJ&hl=en)\*, [Devansh Kukreja](https://www.linkedin.com/in/devanshkukreja)\*, [Don Pinkus](https://www.linkedin.com/in/don-pinkus-9140702a)\*, [Anushka Sagar](https://www.linkedin.com/in/anushkasagar), [Taosha Fan](https://scholar.google.com/citations?user=3PJeg1wAAAAJ&hl=en), [Jinhyung Park](https://jindapark.github.io/)⚬, [Soyong Shin](https://yohanshin.github.io/)⚬, [Jinkun Cao](https://www.jinkuncao.com/), [Jiawei Liu](https://jia-wei-liu.github.io/), [Nicolas Ugrinovic](https://www.iri.upc.edu/people/nugrinovic/), [Matt Feiszli](https://scholar.google.com/citations?user=A-wA73gAAAAJ&hl=en&oi=ao)†, [Jitendra Malik](https://people.eecs.berkeley.edu/~malik/)†, [Piotr Dollar](https://pdollar.github.io/)†, [Kris Kitani](https://kriskitani.github.io/)†
-
-***Meta Superintelligence Labs***
-
-*Core Contributor,  ⚬Intern, †Project Lead
-
-![SAM 3D Body Model Architecture](assets/model_diagram.png?raw=true)
-
-**SAM 3D Body (3DB)** is a promptable model for single-image full-body 3D human mesh recovery (HMR). Our method demonstrates state-of-the-art performance, with strong generalization and consistent accuracy in diverse in-the-wild conditions. 3DB estimates the human pose of the body, feet, and hands based on the [Momentum Human Rig](https://github.com/facebookresearch/MHR) (MHR), a new parametric mesh representation that decouples skeletal structure and surface shape for improved accuracy and interpretability.
-
-3DB employs an encoder-decoder architecture and supports auxiliary prompts, including 2D keypoints and masks, enabling user-guided inference similar to the SAM family of models. Our model is trained on high-quality annotations from a multi-stage annotation pipeline using differentiable optimization, multi-view geometry, dense keypoint detection, and a data engine to collect and annotated data covering both common and rare poses across a wide range of viewpoints.
-
-## Qualitative Results
-
-<table>
-<thead>
-<tr>
-<th align="center">Input</th>
-<th align="center"><strong>SAM 3D Body</strong></th>
-<th align="center">CameraHMR</th>
-<th align="center">NLF</th>
-<th align="center">HMR2.0b</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td align="center"><img src="assets/qualitative_comparisons/sample1/input_bbox.png" alt="Sample 1 Input" width="160"></td>
-<td align="center"><img src="assets/qualitative_comparisons/sample1/SAM 3D Body.png" alt="Sample 1 - SAM 3D Body" width="160"></td>
-<td align="center"><img src="assets/qualitative_comparisons/sample1/camerahmr.png" alt="Sample 1 - CameraHMR" width="160"></td>
-<td align="center"><img src="assets/qualitative_comparisons/sample1/nlf.png" alt="Sample 1 - NLF" width="160"></td>
-<td align="center"><img src="assets/qualitative_comparisons/sample1/4dhumans.png" alt="Sample 1 - 4DHumans (HMR2.0b)" width="160"></td>
-</tr>
-<tr>
-<td align="center"><img src="assets/qualitative_comparisons/sample2/input_bbox.png" alt="Sample 2 Input" width="160"></td>
-<td align="center"><img src="assets/qualitative_comparisons/sample2/SAM 3D Body.png" alt="Sample 2 - SAM 3D Body" width="160"></td>
-<td align="center"><img src="assets/qualitative_comparisons/sample2/camerahmr.png" alt="Sample 2 - CameraHMR" width="160"></td>
-<td align="center"><img src="assets/qualitative_comparisons/sample2/nlf.png" alt="Sample 2 - NLF" width="160"></td>
-<td align="center"><img src="assets/qualitative_comparisons/sample2/4dhumans.png" alt="Sample 2 - 4DHumans (HMR2.0b)" width="160"></td>
-</tr>
-<tr>
-<td align="center"><img src="assets/qualitative_comparisons/sample3/input_bbox.png" alt="Sample 3 Input" width="160"></td>
-<td align="center"><img src="assets/qualitative_comparisons/sample3/SAM 3D Body.png" alt="Sample 3 - SAM 3D Body" width="160"></td>
-<td align="center"><img src="assets/qualitative_comparisons/sample3/camerahmr.png" alt="Sample 3 - CameraHMR" width="160"></td>
-<td align="center"><img src="assets/qualitative_comparisons/sample3/nlf.png" alt="Sample 3 - NLF" width="160"></td>
-<td align="center"><img src="assets/qualitative_comparisons/sample3/4dhumans.png" alt="Sample 3 - 4DHumans (HMR2.0b)" width="160"></td>
-</tr>
-<tr>
-<td align="center"><img src="assets/qualitative_comparisons/sample4/input_bbox.png" alt="Sample 4 Input" width="160"></td>
-<td align="center"><img src="assets/qualitative_comparisons/sample4/SAM 3D Body.png" alt="Sample 4 - SAM 3D Body" width="160"></td>
-<td align="center"><img src="assets/qualitative_comparisons/sample4/camerahmr.png" alt="Sample 4 - CameraHMR" width="160"></td>
-<td align="center"><img src="assets/qualitative_comparisons/sample4/nlf.png" alt="Sample 4 - NLF" width="160"></td>
-<td align="center"><img src="assets/qualitative_comparisons/sample4/4dhumans.png" alt="Sample 4 - 4DHumans (HMR2.0b)" width="160"></td>
-</tr>
-</tbody>
-</table>
-
-*Our SAM 3D Body demonstrates superior reconstruction quality with more accurate pose estimation, better shape recovery, and improved handling of occlusions and challenging viewpoints compared to existing approaches.*
-
-## Latest updates
-
-**11/19/2025** -- Checkpoints Launched, Dataset Released, Web Demo and Paper are out!
-
-## Installation
-See [INSTALL.md](INSTALL.md) for instructions for python environment setup and model checkpoint access.
-
-## Getting Started
-
-3DB can reconstruct 3D full-body human mesh from a single image, optionally with keypoint/mask prompts and/or hand refinement from the hand decoder. 
-
-For a quick start, run our demo script for model inference and visualization with models from [Hugging Face](https://huggingface.co/facebook) (please make sure to follow [INSTALL.md](INSTALL.md) to request access to our checkpoints.).
-
-```bash
-# Download assets from HuggingFace
-hf download facebook/sam-3d-body-dinov3 --local-dir checkpoints/sam-3d-body-dinov3
-
-# Run demo script
-python demo.py \
-    --image_folder <path_to_images> \
-    --output_folder <path_to_output> \
-    --checkpoint_path ./checkpoints/sam-3d-body-dinov3/model.ckpt \
-    --mhr_path ./checkpoints/sam-3d-body-dinov3/assets/mhr_model.pt
+```
+sam-3d-body/
+├── checkpoints/
+│   ├── sam-3d-body-dinov3/          # SAM 3D Body 主模型
+│   │   ├── model.ckpt               # 模型权重 (~2GB)
+│   │   ├── model_config.yaml        # 模型配置
+│   │   └── assets/
+│   │       └── mhr_model.pt         # MHR 模型 (~696MB)
+│   └── moge-2-vitl-normal/          # MoGe FOV 估计模型
+│       └── model.pt                 # MoGe 权重 (~1.3GB)
+├── process_image.py                 # 图片处理脚本
+├── viewer.py                        # 网页3D查看器
+├── tools/
+│   └── mhr_io.py                    # MHR 文件读写工具
+└── output/                          # 输出目录
 ```
 
-You can also try the following lines of code with models loaded directly from [Hugging Face](https://huggingface.co/facebook)
+## 环境配置
+
+### 1. 创建 Conda 环境
+
+```bash
+conda create -n 3d python=3.11 -y
+conda activate 3d
+```
+
+### 2. 安装 PyTorch (CUDA)
+
+```bash
+# CUDA 12.1
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+```
+
+### 3. 安装依赖
+
+```bash
+pip install pytorch-lightning pyrender opencv-python yacs scikit-image einops timm dill pandas rich hydra-core hydra-submitit-launcher hydra-colorlog pyrootutils webdataset chump networkx==3.2.1 roma joblib seaborn wandb appdirs appnope ffmpeg cython jsonlines pytest xtcocotools loguru optree fvcore black pycocotools tensorboard huggingface_hub
+```
+
+### 4. 安装 Detectron2
+
+```bash
+pip install 'git+https://github.com/facebookresearch/detectron2.git@a1ce2f9' --no-build-isolation --no-deps
+```
+
+### 5. 安装 MoGe (FOV 估计)
+
+```bash
+pip install git+https://github.com/microsoft/MoGe.git
+```
+
+## 模型下载
+
+### 方法一：使用 HuggingFace CLI
+
+需要先在 HuggingFace 申请模型访问权限：
+- [facebook/sam-3d-body-dinov3](https://huggingface.co/facebook/sam-3d-body-dinov3)
+
+```bash
+# 登录 HuggingFace
+huggingface-cli login
+
+# 下载 SAM 3D Body 模型
+huggingface-cli download facebook/sam-3d-body-dinov3 --local-dir checkpoints/sam-3d-body-dinov3
+
+# 下载 MoGe 模型
+huggingface-cli download Ruicheng/moge-2-vitl-normal --local-dir checkpoints/moge-2-vitl-normal
+```
+
+### 方法二：手动下载
+
+1. **SAM 3D Body 模型**
+   - 访问 https://huggingface.co/facebook/sam-3d-body-dinov3
+   - 下载 `model.ckpt` 和 `assets/mhr_model.pt`
+   - 放置到 `checkpoints/sam-3d-body-dinov3/` 目录
+
+2. **MoGe 模型**
+   - 访问 https://huggingface.co/Ruicheng/moge-2-vitl-normal
+   - 下载 `model.pt`
+   - 放置到 `checkpoints/moge-2-vitl-normal/` 目录
+
+## 使用方法
+
+### 1. 处理图片生成 MHR 文件
+
+```bash
+# 激活环境
+conda activate 3d
+
+# 处理单张图片（使用默认参数）
+python process_image.py --image path/to/image.jpg
+
+# 完整参数示例
+python process_image.py \
+    --image results/girl.jpg \
+    --output_folder ./output \
+    --checkpoint_path ./checkpoints/sam-3d-body-dinov3/model.ckpt \
+    --mhr_path ./checkpoints/sam-3d-body-dinov3/assets/mhr_model.pt \
+    --local_moge_path ./checkpoints/moge-2-vitl-normal/model.pt
+```
+
+**可选参数：**
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `--image` | (必需) | 输入图片路径 |
+| `--output_folder` | `./output` | 输出目录 |
+| `--checkpoint_path` | `./checkpoints/sam-3d-body-dinov3/model.ckpt` | 模型路径 |
+| `--mhr_path` | `./checkpoints/sam-3d-body-dinov3/assets/mhr_model.pt` | MHR 模型路径 |
+| `--local_moge_path` | `./checkpoints/moge-2-vitl-normal/model.pt` | MoGe 模型路径 |
+| `--bbox_thresh` | `0.8` | 人体检测阈值 |
+| `--use_mask` | `False` | 使用掩膜条件预测 |
+| `--export_obj` | `False` | 同时导出 OBJ 格式 |
+| `--save_vis` | `True` | 保存可视化结果 |
+
+**输出文件：**
+- `output/<image_name>.mhr.json` - MHR 数据文件
+- `output/<image_name>_vis.jpg` - 可视化结果
+- `output/<image_name>_person0.obj` - OBJ 格式 (需要 `--export_obj`)
+
+### 2. 网页查看器
+
+```bash
+# 查看单个 MHR 文件
+python viewer.py --mhr output/girl.mhr.json
+
+# 查看整个目录
+python viewer.py --mhr_folder output/
+
+# 指定端口
+python viewer.py --mhr output/girl.mhr.json --port 8888
+```
+
+浏览器会自动打开 `http://localhost:8080`
+
+**查看器操作：**
+- 🖱️ 左键拖动：旋转模型
+- 🖱️ 滚轮：缩放
+- 🖱️ 右键拖动：平移
+- 按钮切换：网格 / 线框 / 骨架显示
+
+### 3. 快速示例
+
+```bash
+# 一键处理并查看
+python process_image.py --image folders/girl.jpg && python viewer.py --mhr output/girl.mhr.json
+```
+
+## Python API 使用
 
 ```python
 import cv2
 import numpy as np
-from notebook.utils import setup_sam_3d_body
+from sam_3d_body import load_sam_3d_body, SAM3DBodyEstimator
+from tools.mhr_io import save_mhr, export_obj
 from tools.vis_utils import visualize_sample_together
 
-# Set up the estimator
-estimator = setup_sam_3d_body(hf_repo_id="facebook/sam-3d-body-dinov3")
+# 加载模型
+model, cfg = load_sam_3d_body(
+    checkpoint_path="./checkpoints/sam-3d-body-dinov3/model.ckpt",
+    mhr_path="./checkpoints/sam-3d-body-dinov3/assets/mhr_model.pt"
+)
 
-# Load and process image
-img_bgr = cv2.imread("path/to/image.jpg")
-outputs = estimator.process_one_image(cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB))
+# 创建估计器
+estimator = SAM3DBodyEstimator(sam_3d_body_model=model, model_cfg=cfg)
 
-# Visualize and save results
-rend_img = visualize_sample_together(img_bgr, outputs, estimator.faces)
-cv2.imwrite("output.jpg", rend_img.astype(np.uint8))
+# 处理图片
+outputs = estimator.process_one_image("image.jpg", bbox_thr=0.8)
+
+# 保存结果
+save_mhr("output.mhr.json", outputs, estimator.faces)
+
+# 可视化
+img = cv2.imread("image.jpg")
+vis = visualize_sample_together(img, outputs, estimator.faces)
+cv2.imwrite("output_vis.jpg", vis)
+
+# 获取3D数据
+for person in outputs:
+    vertices = person["pred_vertices"]      # (18439, 3) 顶点坐标
+    keypoints_3d = person["pred_keypoints_3d"]  # (70, 3) 3D关键点
+    keypoints_2d = person["pred_keypoints_2d"]  # (70, 2) 2D关键点
+    faces = estimator.faces                 # (36874, 3) 面片索引
 ```
 
-For a complete demo with visualization, see [notebook/demo_human.ipynb](notebook/demo_human.ipynb).
+## MHR 文件格式
 
+`.mhr.json` 文件结构：
 
-## Model Description
-
-### SAM 3D Body checkpoints
-
-The table below shows the performance of SAM 3D Body checkpoints released on 11/19/2025.
-
-|      **Backbone (size)**       | **3DPW (MPJPE)** |    **EMDB (MPJPE)**     | **RICH (PVE)** | **COCO (PCK@.05)** |  **LSPET (PCK@.05)** | **Freihand (PA-MPJPE)** 
-| :------------------: | :----------: | :--------------------: | :-----------------: | :----------------: | :----------------: | :----------------: |
-|  DINOv3-H+ (840M) <br /> ([config](https://huggingface.co/facebook/sam-3d-body-dinov3/blob/main/model_config.yaml), [checkpoint](https://huggingface.co/facebook/sam-3d-body-dinov3/blob/main/model.ckpt))   |      54.8      |          61.7         |       60.3        |       86.5        | 68.0 | 5.5
-|   ViT-H  (631M) <br /> ([config](https://huggingface.co/facebook/sam-3d-body-vith/blob/main/model_config.yaml), [checkpoint](https://huggingface.co/facebook/sam-3d-body-vith/blob/main/model.ckpt))    |     54.8   |         62.9         |       61.7        |        86.8       | 68.9 |  5.5
-
-
-## SAM 3D Body Dataset
-The SAM 3D Body data is released on [Hugging Face](https://huggingface.co/datasets/facebook/sam-3d-body-dataset). Please follow the [instructions](./data/README.md) to download and process the data.
-
-## SAM 3D Objects
-
-[SAM 3D Objects](https://github.com/facebookresearch/sam-3d-objects) is a foundation model that reconstructs full 3D shape geometry, texture, and layout from a single image.
-
-As a way to combine the strengths of both **SAM 3D Objects** and **SAM 3D Body**, we provide an example notebook that demonstrates how to combine the results of both models such that they are aligned in the same frame of reference. Check it out [here](https://github.com/facebookresearch/sam-3d-objects/blob/main/notebook/demo_3db_mesh_alignment.ipynb).
-
-## License
-
-The SAM 3D Body model checkpoints and code are licensed under [SAM License](./LICENSE).
-
-## Contributing
-
-See [contributing](CONTRIBUTING.md) and the [code of conduct](CODE_OF_CONDUCT.md).
-
-## Contributors
-
-The SAM 3D Body project was made possible with the help of many contributors:
-Vivian Lee, George Orlin, Nikhila Ravi, Andrew Westbury, Jyun-Ting Song, Zejia Weng, Xizi Zhang, Yuting Ye, Federica Bogo, Ronald Mallet, Ahmed Osman, Rawal Khirodkar, Javier Romero, Carsten Stoll, Jean-Charles Bazin, Sofien Bouaziz, Yuan Dong, Su Zhaoen, Fabian Prada, Alexander Richard, Michael Zollhoefer, Roman Rädle, Sasha Mitts, Michelle Chan, Yael Yungster, Azita Shokrpour, Helen Klein, Mallika Malhotra, Ida Cheng, Eva Galper.
-
-## Citing SAM 3D Body
-
-If you use SAM 3D Body or the SAM 3D Body dataset in your research, please use the following BibTeX entry.
-
-```bibtex
-@article{yang2025sam3dbody,
-  title={SAM 3D Body: Robust Full-Body Human Mesh Recovery},
-  author={Yang, Xitong and Kukreja, Devansh and Pinkus, Don and Sagar, Anushka and Fan, Taosha and Park, Jinhyung and Shin, Soyong and Cao, Jinkun and Liu, Jiawei and Ugrinovic, Nicolas and Feiszli, Matt and Malik, Jitendra and Dollar, Piotr and Kitani, Kris},
-  journal={arXiv preprint; identifier to be added},
-  year={2025}
+```json
+{
+  "version": "1.0",
+  "image_path": "path/to/image.jpg",
+  "image_size": [width, height],
+  "num_people": 1,
+  "faces": [[0, 1, 2], ...],
+  "people": [
+    {
+      "id": 0,
+      "bbox": [x1, y1, x2, y2],
+      "focal_length": 500.0,
+      "camera": {
+        "translation": [tx, ty, tz]
+      },
+      "mesh": {
+        "vertices": [[x, y, z], ...],
+        "keypoints_3d": [[x, y, z], ...],
+        "keypoints_2d": [[x, y], ...]
+      },
+      "params": {
+        "global_rot": [...],
+        "body_pose": [...],
+        "shape": [...],
+        "scale": [...],
+        "hand": [...],
+        "expression": [...]
+      }
+    }
+  ]
 }
 ```
+
+## 参考链接
+
+- [SAM 3D Body 官方仓库](https://github.com/facebookresearch/sam-3d-body)
+- [MHR 人体模型](https://github.com/facebookresearch/MHR)
+- [MoGe 深度估计](https://github.com/microsoft/MoGe)
+- [Hugging Face 模型页](https://huggingface.co/facebook/sam-3d-body-dinov3)
