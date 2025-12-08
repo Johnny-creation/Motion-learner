@@ -119,3 +119,8 @@ debug/
 **/.dist_test
 sandbox*
 *.sh
+
+# data
+*.jpg
+*.mp4
+*.json
