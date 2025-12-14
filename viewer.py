@@ -24,6 +24,8 @@ import socketserver
 import webbrowser
 import threading
 import socket
+import ssl
+import subprocess
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
@@ -295,6 +297,30 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         <hr style="border-color:#444;margin:10px 0;">
         <button id="btn-reset">重置视角</button>
         <button id="btn-lock" title="锁定视角后切换帧保持当前视角">锁定视角</button>
+        <hr style="border-color:#444;margin:10px 0;">
+        <button id="start-camera-btn" style="background: #66bb6a;">📷 开启摄像头</button>
+    </div>
+    
+    <!-- 摄像头面板 -->
+    <div id="camera-panel" style="position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.9); padding: 20px; border-radius: 12px; text-align: center; border: 2px solid #66bb6a; display: none; max-width: 90%;">
+        <h3 style="color: #66bb6a; margin-bottom: 15px;">手势控制模式</h3>
+        <div class="camera-container" style="position: relative; display: inline-block; margin: 15px 0;">
+            <video id="camera-video" autoplay playsinline style="width: 320px; height: 240px; background: #000; border-radius: 8px; transform: scaleX(-1);"></video>
+            <canvas id="camera-canvas" style="position: absolute; top: 0; left: 0; width: 320px; height: 240px; pointer-events: none; transform: scaleX(-1);"></canvas>
+        </div>
+        <p style="color: #888; font-size: 12px; margin: 5px 0;"><strong>单手手势:</strong></p>
+        <p style="color: #888; font-size: 11px; margin: 3px 0;">👍 伸出大拇指 → 放大模型</p>
+        <p style="color: #888; font-size: 11px; margin: 3px 0;">👎 伸出小拇指 → 缩小模型</p>
+        <p style="color: #888; font-size: 11px; margin: 3px 0;">👈 左指向左 → 向左旋转</p>
+        <p style="color: #888; font-size: 11px; margin: 3px 0;">👉 右指向右 → 向右旋转</p>
+        <p style="color: #888; font-size: 11px; margin: 3px 0;">✌️ 比剪刀（V字）→ 切换显示模式</p>
+        <p style="color: #888; font-size: 12px; margin-top: 8px;"><strong>双手手势:</strong></p>
+        <p style="color: #888; font-size: 11px; margin: 3px 0;">👊👊 双手握拳 → 恢复视角并锁定</p>
+        <p style="color: #888; font-size: 11px; margin: 3px 0;">🖐️🖐️ 双手张开 → 自动旋转</p>
+        <p style="color: #888; font-size: 10px; margin-top: 8px;">💡 提示：保持手势清晰稳定，避免快速切换</p>
+        <div class="camera-controls" style="display: flex; gap: 10px; justify-content: center; margin-top: 15px;">
+            <button id="stop-camera-btn" style="background: #ef5350; color: #fff; border: none; padding: 8px 20px; border-radius: 6px; cursor: pointer; font-size: 14px;">关闭摄像头</button>
+        </div>
     </div>
     <div id="file-list" style="display: none;">
         <h4>文件列表</h4>
@@ -339,6 +365,193 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
         }
     }
+    </script>
+    <!-- MediaPipe Hands -->
+    <script>
+        // 动态加载MediaPipe库，添加错误处理
+        let mediapipeLoaded = false;
+        let mediapipeLoadAttempts = 0;
+        const maxLoadAttempts = 3;
+        
+        function loadMediaPipeScript(src, onLoad, onError) {
+            const script = document.createElement('script');
+            script.src = src;
+            script.type = 'text/javascript';
+            script.async = true;
+            script.onload = onLoad;
+            script.onerror = function() {
+                console.error('Failed to load MediaPipe script:', src);
+                if (onError) onError();
+            };
+            document.head.appendChild(script);
+        }
+        
+        // 本地文件源（优先）
+        const LOCAL_SOURCE = {
+            name: 'local',
+            base: '/mediapipe',
+            hands: 'hands/hands.js',
+            camera: 'camera_utils/camera_utils.js',
+            drawing: 'drawing_utils/drawing_utils.js'
+        };
+        
+        // 多个CDN源作为备选
+        const CDN_SOURCES = [
+            {
+                name: 'jsdelivr',
+                base: 'https://cdn.jsdelivr.net/npm',
+                hands: '@mediapipe/hands@0.4.1675469240/hands.js',
+                camera: '@mediapipe/camera_utils@0.3.1640029074/camera_utils.js',
+                drawing: '@mediapipe/drawing_utils@0.3.1620248257/drawing_utils.js'
+            },
+            {
+                name: 'unpkg',
+                base: 'https://unpkg.com',
+                hands: '@mediapipe/hands@0.4.1675469240/hands.js',
+                camera: '@mediapipe/camera_utils@0.3.1640029074/camera_utils.js',
+                drawing: '@mediapipe/drawing_utils@0.3.1620248257/drawing_utils.js'
+            },
+            {
+                name: 'esm',
+                base: 'https://esm.sh',
+                hands: '@mediapipe/hands@0.4.1675469240/hands.js',
+                camera: '@mediapipe/camera_utils@0.3.1640029074/camera_utils.js',
+                drawing: '@mediapipe/drawing_utils@0.3.1620248257/drawing_utils.js'
+            }
+        ];
+        
+        let currentSourceIndex = -1; // -1表示先尝试本地，0开始是CDN
+        let currentCDNIndex = 0;
+        
+        function loadMediaPipe() {
+            if (mediapipeLoaded) return;
+            
+            // 首先尝试本地文件
+            if (currentSourceIndex === -1) {
+                mediapipeLoadAttempts++;
+                console.log(`尝试从 ${LOCAL_SOURCE.name} 加载MediaPipe库 (第${mediapipeLoadAttempts}次)...`);
+                
+                const handsUrl = `${LOCAL_SOURCE.base}/${LOCAL_SOURCE.hands}`;
+                const cameraUrl = `${LOCAL_SOURCE.base}/${LOCAL_SOURCE.camera}`;
+                const drawingUrl = `${LOCAL_SOURCE.base}/${LOCAL_SOURCE.drawing}`;
+                
+                loadMediaPipeScript(
+                    handsUrl,
+                    function() {
+                        console.log(`MediaPipe Hands 从 ${LOCAL_SOURCE.name} 加载成功`);
+                        loadMediaPipeScript(
+                            cameraUrl,
+                            function() {
+                                console.log(`MediaPipe Camera Utils 从 ${LOCAL_SOURCE.name} 加载成功`);
+                                loadMediaPipeScript(
+                                    drawingUrl,
+                                    function() {
+                                        console.log(`MediaPipe Drawing Utils 从 ${LOCAL_SOURCE.name} 加载成功`);
+                                        mediapipeLoaded = true;
+                                        // 使用本地路径
+                                        window.mediapipeCDNBase = LOCAL_SOURCE.base;
+                                        window.dispatchEvent(new Event('mediapipeLoaded'));
+                                    },
+                                    function() {
+                                        console.warn(`MediaPipe Drawing Utils 从 ${LOCAL_SOURCE.name} 加载失败，尝试CDN`);
+                                        tryNextSource();
+                                    }
+                                );
+                            },
+                            function() {
+                                console.warn(`MediaPipe Camera Utils 从 ${LOCAL_SOURCE.name} 加载失败，尝试CDN`);
+                                tryNextSource();
+                            }
+                        );
+                    },
+                    function() {
+                        console.warn(`MediaPipe Hands 从 ${LOCAL_SOURCE.name} 加载失败，尝试CDN`);
+                        tryNextSource();
+                    }
+                );
+                return;
+            }
+            
+            // 尝试CDN源
+            if (currentCDNIndex >= CDN_SOURCES.length) {
+                console.error('所有源都加载失败');
+                alert('MediaPipe手势识别库加载失败\\n\\n已尝试本地文件和所有CDN源均失败\\n\\n解决方案：\\n1. 运行 python download_mediapipe.py 下载本地文件\\n2. 检查网络连接\\n3. 使用VPN或代理\\n\\n手势控制功能将不可用，但其他功能正常');
+                return;
+            }
+            
+            const cdn = CDN_SOURCES[currentCDNIndex];
+            mediapipeLoadAttempts++;
+            console.log(`尝试从 ${cdn.name} CDN 加载MediaPipe库 (第${mediapipeLoadAttempts}次)...`);
+            
+            const handsUrl = `${cdn.base}/${cdn.hands}`;
+            const cameraUrl = `${cdn.base}/${cdn.camera}`;
+            const drawingUrl = `${cdn.base}/${cdn.drawing}`;
+            
+            loadMediaPipeScript(
+                handsUrl,
+                function() {
+                    console.log(`MediaPipe Hands 从 ${cdn.name} 加载成功`);
+                    loadMediaPipeScript(
+                        cameraUrl,
+                        function() {
+                            console.log(`MediaPipe Camera Utils 从 ${cdn.name} 加载成功`);
+                            loadMediaPipeScript(
+                                drawingUrl,
+                                function() {
+                                    console.log(`MediaPipe Drawing Utils 从 ${cdn.name} 加载成功`);
+                                    mediapipeLoaded = true;
+                                    window.mediapipeCDNBase = cdn.base;
+                                    window.dispatchEvent(new Event('mediapipeLoaded'));
+                                },
+                                function() {
+                                    console.error(`MediaPipe Drawing Utils 从 ${cdn.name} 加载失败`);
+                                    tryNextSource();
+                                }
+                            );
+                        },
+                        function() {
+                            console.error(`MediaPipe Camera Utils 从 ${cdn.name} 加载失败`);
+                            tryNextSource();
+                        }
+                    );
+                },
+                function() {
+                    console.error(`MediaPipe Hands 从 ${cdn.name} 加载失败`);
+                    tryNextSource();
+                }
+            );
+        }
+        
+        function tryNextSource() {
+            if (currentSourceIndex === -1) {
+                // 本地文件失败，切换到CDN
+                currentSourceIndex = 0;
+                mediapipeLoadAttempts = 0;
+                console.log('本地文件不可用，切换到CDN源');
+                setTimeout(loadMediaPipe, 1000);
+            } else if (mediapipeLoadAttempts < maxLoadAttempts) {
+                // 当前CDN重试
+                setTimeout(loadMediaPipe, 2000);
+            } else {
+                // 当前CDN重试次数用完，尝试下一个CDN
+                currentCDNIndex++;
+                mediapipeLoadAttempts = 0;
+                if (currentCDNIndex < CDN_SOURCES.length) {
+                    console.log(`切换到下一个CDN源: ${CDN_SOURCES[currentCDNIndex].name}`);
+                    setTimeout(loadMediaPipe, 1000);
+                } else {
+                    console.error('所有源都加载失败');
+                    alert('MediaPipe手势识别库加载失败\\n\\n已尝试本地文件和所有CDN源均失败\\n\\n解决方案：\\n1. 运行 python download_mediapipe.py 下载本地文件\\n2. 检查网络连接\\n3. 使用VPN或代理\\n\\n手势控制功能将不可用，但其他功能正常');
+                }
+            }
+        }
+        
+        // 页面加载完成后开始加载MediaPipe
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', loadMediaPipe);
+        } else {
+            loadMediaPipe();
+        }
     </script>
 
     <script type="module">
@@ -440,6 +653,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             // 旋转控制
             document.getElementById('btn-rotate-cw').addEventListener('click', () => rotateCamera(15));
             document.getElementById('btn-rotate-ccw').addEventListener('click', () => rotateCamera(-15));
+
+            // 摄像头控制
+            document.getElementById('start-camera-btn').addEventListener('click', startCamera);
+            document.getElementById('stop-camera-btn').addEventListener('click', stopCamera);
 
             // 播放器控制
             document.getElementById('btn-play').addEventListener('click', togglePlay);
@@ -1085,8 +1302,596 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
         function animate() {
             requestAnimationFrame(animate);
+            
+            // 自动旋转功能
+            if (autoRotateEnabled && meshes.length > 0) {
+                rotateCamera(autoRotateSpeed);
+            }
+            
             controls.update();
             renderer.render(scene, camera);
+        }
+
+        // 摄像头和手势识别相关
+        let cameraStream = null;
+        let hands = null;
+        let mediaPipeCamera = null;
+        let isCameraMode = false;
+        let autoRotateEnabled = false;  // 自动旋转开关
+        let autoRotateSpeed = 0.5;  // 自动旋转速度（度/帧）
+        let gestureState = {
+            // 单手状态
+            singleHand: {
+                landmarks: null,
+                fingerState: null,
+                handCenter: null,
+                handNormal: null,  // 手掌法向量（用于检测手掌旋转）
+                lastPosition: null,
+                lastGestureType: null,
+                gestureHistory: [],
+                positionHistory: [],
+                rotationHistory: [],  // 用于检测画圈动作
+                lastPinchDistance: null  // 上一次捏合距离
+            },
+            // 双手状态
+            twoHands: {
+                leftHand: null,
+                rightHand: null,
+                lastDistance: null,
+                lastCenter: null
+            },
+            // 全局状态
+            lastGestureTime: 0,
+            gestureCooldown: 300,
+            activeGesture: null,  // 当前激活的手势
+            continuousGesture: null  // 连续手势（旋转、缩放、平移）
+        };
+
+        const HAND_CONNECTIONS_GESTURE = [
+            [0, 1], [1, 2], [2, 3], [3, 4],
+            [0, 5], [5, 6], [6, 7], [7, 8],
+            [0, 9], [9, 10], [10, 11], [11, 12],
+            [0, 13], [13, 14], [14, 15], [15, 16],
+            [0, 17], [17, 18], [18, 19], [19, 20],
+            [5, 9], [9, 13], [13, 17]
+        ];
+
+        // 摄像头功能
+        async function startCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { width: 320, height: 240 } 
+                });
+                cameraStream = stream;
+                const video = document.getElementById('camera-video');
+                video.srcObject = stream;
+                
+                document.getElementById('camera-panel').style.display = 'block';
+                isCameraMode = true;
+                
+                await new Promise((resolve) => {
+                    video.onloadedmetadata = () => {
+                        video.play();
+                        resolve();
+                    };
+                });
+                
+                // 初始化MediaPipe Hands
+                let retries = 0;
+                const maxRetries = 30; // 增加重试次数（30秒）
+                const initMediaPipe = () => {
+                    // 检查MediaPipe库是否已加载
+                    if (typeof Hands === 'undefined') {
+                        if (retries < maxRetries) {
+                            retries++;
+                            if (retries % 10 === 0) {
+                                console.log(`等待MediaPipe加载... (${retries}/${maxRetries})`);
+                            }
+                            setTimeout(initMediaPipe, 1000); // 改为1秒重试一次
+                            return;
+                        } else {
+                            console.error('MediaPipe Hands未加载 - 超时');
+                            console.error('请检查：');
+                            console.error('1. 网络连接是否正常');
+                            console.error('2. 是否能访问 https://cdn.jsdelivr.net');
+                            console.error('3. 浏览器控制台是否有其他错误');
+                            alert('MediaPipe手势识别库加载超时\\n\\n请检查：\\n1. 网络连接\\n2. 是否能访问 jsdelivr.net CDN\\n3. 刷新页面重试');
+                            processCameraFrameBasic();
+                            return;
+                        }
+                    }
+                    
+                    // MediaPipe已加载，初始化
+                    if (!hands) {
+                        try {
+                            console.log('正在初始化MediaPipe Hands...');
+                            // 使用当前成功的源（本地或CDN）
+                            const base = window.mediapipeCDNBase || '/mediapipe';
+                            hands = new Hands({
+                                locateFile: (file) => {
+                                    // 如果是本地路径，直接使用；否则使用CDN路径
+                                    if (base.startsWith('/')) {
+                                        return `${base}/hands/${file}`;
+                                    } else {
+                                        return `${base}/@mediapipe/hands/${file}`;
+                                    }
+                                }
+                            });
+                            hands.setOptions({
+                                maxNumHands: 2,  // 支持双手识别
+                                modelComplexity: 1,  // 使用中等复杂度模型，平衡速度和准确性
+                                minDetectionConfidence: 0.7,  // 提高检测置信度，减少误检
+                                minTrackingConfidence: 0.7  // 提高跟踪置信度，提高稳定性
+                            });
+                            hands.onResults(onHandResults);
+                            console.log('MediaPipe Hands 初始化成功');
+                            
+                            if (typeof Camera !== 'undefined') {
+                                mediaPipeCamera = new Camera(video, {
+                                    onFrame: async () => {
+                                        await hands.send({image: video});
+                                    },
+                                    width: 320,
+                                    height: 240
+                                });
+                                mediaPipeCamera.start();
+                                console.log('MediaPipe Camera 启动成功');
+                            } else {
+                                console.warn('MediaPipe Camera Utils 未加载，使用基础模式');
+                                processCameraFrame();
+                            }
+                        } catch (error) {
+                            console.error('MediaPipe初始化失败:', error);
+                            console.error('错误详情:', error.message, error.stack);
+                            alert('MediaPipe初始化失败: ' + error.message);
+                            processCameraFrameBasic();
+                        }
+                    }
+                };
+                
+                // 监听MediaPipe加载完成事件
+                window.addEventListener('mediapipeLoaded', () => {
+                    console.log('收到MediaPipe加载完成事件');
+                    initMediaPipe();
+                });
+                
+                // 立即尝试初始化（如果已经加载）
+                initMediaPipe();
+                
+            } catch (error) {
+                console.error('无法访问摄像头:', error);
+                alert('无法访问摄像头，请检查权限设置');
+            }
+        }
+        
+        function processCameraFrame() {
+            if (!isCameraMode || !cameraStream) return;
+            const video = document.getElementById('camera-video');
+            if (video.readyState === video.HAVE_ENOUGH_DATA && hands) {
+                hands.send({image: video});
+            }
+            requestAnimationFrame(processCameraFrame);
+        }
+        
+        function processCameraFrameBasic() {
+            if (!isCameraMode || !cameraStream) return;
+            const video = document.getElementById('camera-video');
+            const canvas = document.getElementById('camera-canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = 320;
+            canvas.height = 240;
+            ctx.drawImage(video, 0, 0, 320, 240);
+            requestAnimationFrame(processCameraFrameBasic);
+        }
+        
+        function stopCamera() {
+            if (mediaPipeCamera) {
+                mediaPipeCamera.stop();
+                mediaPipeCamera = null;
+            }
+            if (cameraStream) {
+                cameraStream.getTracks().forEach(track => track.stop());
+                cameraStream = null;
+            }
+            document.getElementById('camera-panel').style.display = 'none';
+            isCameraMode = false;
+            autoRotateEnabled = false;
+            gestureState = {
+                singleHand: {
+                    landmarks: null,
+                    fingerState: null,
+                lastGestureType: null,
+                    gestureHistory: []
+                },
+                twoHands: {
+                    leftHand: null,
+                    rightHand: null
+                },
+                lastGestureTime: 0,
+                gestureCooldown: 500,  // 增加防抖时间，提高稳定性
+                activeGesture: null
+            };
+        }
+        
+        function onHandResults(results) {
+            const canvas = document.getElementById('camera-canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = 320;
+            canvas.height = 240;
+            
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const numHands = results.multiHandLandmarks.length;
+                
+                // 绘制所有手部关键点
+                results.multiHandLandmarks.forEach((landmarks, idx) => {
+                    const color = idx === 0 ? '#00FF00' : '#00FFFF';
+                    drawConnectors(ctx, landmarks, HAND_CONNECTIONS_GESTURE, {color: color, lineWidth: 2});
+                drawLandmarks(ctx, landmarks, {color: '#FF0000', lineWidth: 1, radius: 2});
+                });
+                
+                // 处理手势（支持单手和双手）
+                if (numHands === 1) {
+                    processSingleHandGesture(results.multiHandLandmarks[0], results.multiHandedness[0]);
+                } else if (numHands === 2) {
+                    processTwoHandsGesture(results.multiHandLandmarks, results.multiHandedness);
+                }
+            } else {
+                // 没有检测到手，清除连续手势
+                gestureState.continuousGesture = null;
+                gestureState.activeGesture = null;
+            }
+        }
+        
+        // 处理单手手势（简化版）
+        function processSingleHandGesture(landmarks, handedness) {
+            if (!meshes || meshes.length === 0) return;
+            
+            const now = Date.now();
+            
+            // 获取手指状态（使用更严格的检测）
+            const fingerState = getDetailedFingerState(landmarks);
+            
+            // 更新状态历史（用于稳定性检查）
+            const state = gestureState.singleHand;
+            state.landmarks = landmarks;
+            state.fingerState = fingerState;
+            
+            // 记录手势历史（用于稳定性验证）
+            state.gestureHistory.push({
+                fingerState: {...fingerState},
+                time: now
+            });
+            if (state.gestureHistory.length > 5) {
+                state.gestureHistory.shift();
+            }
+            
+            // 识别手势类型（使用稳定性检查）
+            const gestureType = recognizeSimpleGesture(fingerState, landmarks, state);
+            
+            // 只处理稳定的手势（最近3帧一致）
+            if (!isGestureStable(gestureType, state)) {
+                return;
+            }
+            
+            // 处理手势（防抖：同一手势需要间隔一定时间）
+            if (now - gestureState.lastGestureTime < gestureState.gestureCooldown) {
+                return;
+            }
+            
+            if (gestureType === 'thumb_up') {
+                // 大拇指：放大模型
+                zoomCamera(0.92);
+                gestureState.lastGestureTime = now;
+            } else if (gestureType === 'pinky_up') {
+                // 小拇指：缩小模型
+                zoomCamera(1.08);
+                gestureState.lastGestureTime = now;
+            } else if (gestureType === 'point_left' && state.lastGestureType !== 'point_left') {
+                // 左指：向左旋转
+                rotateCamera(-10);
+                gestureState.lastGestureTime = now;
+                state.lastGestureType = gestureType;
+            } else if (gestureType === 'point_right' && state.lastGestureType !== 'point_right') {
+                // 右指：向右旋转
+                rotateCamera(10);
+                gestureState.lastGestureTime = now;
+                state.lastGestureType = gestureType;
+            } else if (gestureType === 'v_sign' && state.lastGestureType !== 'v_sign') {
+                // V字手势：切换显示模式
+                cycleViewMode();
+                gestureState.lastGestureTime = now;
+                state.lastGestureType = gestureType;
+            }
+            
+            // 更新最后手势类型
+            if (gestureType !== 'unknown') {
+                state.lastGestureType = gestureType;
+            }
+        }
+        
+        // 处理双手手势（简化版）
+        function processTwoHandsGesture(landmarksArray, handednessArray) {
+            if (!meshes || meshes.length === 0) return;
+            if (landmarksArray.length !== 2) return;
+            
+            const now = Date.now();
+            
+            // 获取两只手的手指状态
+            const leftFingerState = getDetailedFingerState(landmarksArray[0]);
+            const rightFingerState = getDetailedFingerState(landmarksArray[1]);
+            
+            // 更新状态历史
+            const state = gestureState.twoHands;
+            state.leftHand = {
+                landmarks: landmarksArray[0],
+                fingerState: leftFingerState
+            };
+            state.rightHand = {
+                landmarks: landmarksArray[1],
+                fingerState: rightFingerState
+            };
+            
+            // 识别双手手势
+            const leftFist = isFist(leftFingerState);
+            const rightFist = isFist(rightFingerState);
+            const leftOpen = isOpenHand(leftFingerState);
+            const rightOpen = isOpenHand(rightFingerState);
+            
+            // 防抖：同一手势需要间隔一定时间
+            if (now - gestureState.lastGestureTime < gestureState.gestureCooldown) {
+                return;
+            }
+            
+            // 双手握拳：恢复视角并锁定
+            if (leftFist && rightFist && gestureState.activeGesture !== 'two_fists') {
+                fitCameraToMeshes();
+                lockCamera = true;
+                updateLockButton();
+                saveCameraState();
+                        gestureState.lastGestureTime = now;
+                gestureState.activeGesture = 'two_fists';
+                console.log('双手握拳：恢复视角并锁定');
+                    }
+            // 双手张开：自动旋转
+            else if (leftOpen && rightOpen && gestureState.activeGesture !== 'two_open') {
+                autoRotateEnabled = true;
+                gestureState.lastGestureTime = now;
+                gestureState.activeGesture = 'two_open';
+                console.log('双手张开：自动旋转');
+            }
+            else {
+                gestureState.activeGesture = null;
+            }
+        }
+        
+        // 检查是否为握拳
+        function isFist(fingerState) {
+            const {thumb, index, middle, ring, pinky} = fingerState;
+            // 所有手指都收起
+            return !thumb && !index && !middle && !ring && !pinky;
+        }
+        
+        // 检查是否为张开的手掌
+        function isOpenHand(fingerState) {
+            const {thumb, index, middle, ring, pinky} = fingerState;
+            // 所有手指都伸出
+            return thumb && index && middle && ring && pinky;
+        }
+        
+        
+        // 识别简单手势（提高准确度）
+        function recognizeSimpleGesture(fingerState, landmarks, state) {
+            const {thumb, index, middle, ring, pinky, totalCount} = fingerState;
+            
+            // 1. 大拇指：只有大拇指伸出，其他手指都收起
+            if (thumb && !index && !middle && !ring && !pinky) {
+                // 检查大拇指是否真的伸出（通过位置判断）
+                const thumbTip = landmarks[4];
+                const thumbIP = landmarks[3];
+                const thumbMCP = landmarks[2];
+                const thumbHeight = thumbTip.y - thumbIP.y;
+                const thumbLength = Math.sqrt(
+                    Math.pow(thumbTip.x - thumbMCP.x, 2) +
+                    Math.pow(thumbTip.y - thumbMCP.y, 2)
+                );
+                // 大拇指需要明显伸出
+                if (thumbHeight < -0.02 && thumbLength > 0.03) {
+                    return 'thumb_up';
+                }
+            }
+            
+            // 2. 小拇指：只有小拇指伸出，其他手指都收起
+            if (!thumb && !index && !middle && !ring && pinky) {
+                // 检查小拇指是否真的伸出
+                const pinkyTip = landmarks[20];
+                const pinkyPIP = landmarks[18];
+                const pinkyMCP = landmarks[17];
+                const pinkyHeight = pinkyTip.y - pinkyPIP.y;
+                const pinkyLength = Math.sqrt(
+                    Math.pow(pinkyTip.x - pinkyMCP.x, 2) +
+                    Math.pow(pinkyTip.y - pinkyMCP.y, 2)
+                );
+                // 小拇指需要明显伸出
+                if (pinkyHeight < -0.02 && pinkyLength > 0.03) {
+                    return 'pinky_up';
+                }
+            }
+            
+            // 3. V字手势（剪刀）：食指和中指伸出，其他收起
+            if (!thumb && index && middle && !ring && !pinky) {
+                // 检查两指是否都明显伸出
+                const indexTip = landmarks[8];
+                const indexPIP = landmarks[6];
+                const middleTip = landmarks[12];
+                const middlePIP = landmarks[10];
+                const indexExtended = indexTip.y < indexPIP.y - 0.02;
+                const middleExtended = middleTip.y < middlePIP.y - 0.02;
+                if (indexExtended && middleExtended) {
+                    return 'v_sign';
+                }
+            }
+            
+            // 4. 左指：只有食指伸出，且指向左侧
+            if (!thumb && index && !middle && !ring && !pinky) {
+                const indexTip = landmarks[8];
+                const indexPIP = landmarks[6];
+                const indexMCP = landmarks[5];
+                const wrist = landmarks[0];
+                
+                // 检查食指是否伸出
+                const indexExtended = indexTip.y < indexPIP.y - 0.02;
+                if (indexExtended) {
+                    // 判断指向方向：食指相对于手腕的位置
+                    const direction = indexTip.x - wrist.x;
+                    if (direction < -0.05) {  // 指向左侧
+                        return 'point_left';
+                    } else if (direction > 0.05) {  // 指向右侧
+                        return 'point_right';
+                    }
+                }
+            }
+            
+            return 'unknown';
+        }
+        
+        // 检查手势是否稳定（最近几帧一致）
+        function isGestureStable(gestureType, state) {
+            if (gestureType === 'unknown') return false;
+            if (state.gestureHistory.length < 3) return false;
+            
+            // 检查最近3帧是否都是相同手势
+            const recent = state.gestureHistory.slice(-3);
+            const allSame = recent.every(h => {
+                const detected = recognizeSimpleGesture(h.fingerState, state.landmarks, state);
+                return detected === gestureType;
+            });
+            
+            return allSame;
+        }
+        
+        // 切换显示模式
+        function cycleViewMode() {
+                if (showMesh && !showWireframe && !showSkeleton) {
+                    showMesh = false;
+                    showWireframe = true;
+                    document.getElementById('btn-wireframe').classList.add('active');
+                    document.getElementById('btn-mesh').classList.remove('active');
+                } else if (showWireframe) {
+                    showWireframe = false;
+                    showSkeleton = true;
+                    document.getElementById('btn-skeleton').classList.add('active');
+                    document.getElementById('btn-wireframe').classList.remove('active');
+                } else {
+                    showSkeleton = false;
+                    showMesh = true;
+                    document.getElementById('btn-mesh').classList.add('active');
+                    document.getElementById('btn-skeleton').classList.remove('active');
+                }
+                applyViewSettings();
+        }
+        
+        // 获取详细的手指状态（不仅计数，还知道具体哪些手指伸出）
+        function getDetailedFingerState(landmarks) {
+            const fingerTips = [4, 8, 12, 16, 20];  // 拇指、食指、中指、无名指、小指
+            const fingerPIPs = [3, 6, 10, 14, 18];
+            const fingerMCPs = [2, 5, 9, 13, 17];  // 用于更精确的判断
+            const wrist = landmarks[0];
+            
+            const state = {
+                thumb: false,      // 拇指
+                index: false,      // 食指
+                middle: false,     // 中指
+                ring: false,       // 无名指
+                pinky: false,      // 小指
+                totalCount: 0
+            };
+            
+            // 检测手的方向（左手或右手）
+            const indexMCP = landmarks[5];
+            const isRightHand = indexMCP.x > wrist.x;
+            
+            // 拇指检测（更精确的方法）
+            const thumbTip = landmarks[4];
+            const thumbIP = landmarks[3];
+            const thumbMCP = landmarks[2];
+            
+            // 计算拇指是否伸出：使用拇指尖相对于拇指IP的位置
+            const thumbVector = {
+                x: thumbTip.x - thumbIP.x,
+                y: thumbTip.y - thumbIP.y
+            };
+            const handVector = {
+                x: indexMCP.x - wrist.x,
+                y: indexMCP.y - wrist.y
+            };
+            // 使用叉积判断拇指是否伸出（适应左右手）
+            const crossProduct = thumbVector.x * handVector.y - thumbVector.y * handVector.x;
+            state.thumb = isRightHand ? crossProduct > 0.001 : crossProduct < -0.001;
+            
+            // 其他四指检测（使用更严格的条件）
+            for (let i = 1; i < 5; i++) {
+                const tipIdx = fingerTips[i];
+                const pipIdx = fingerPIPs[i];
+                const mcpIdx = fingerMCPs[i];
+                
+                const tip = landmarks[tipIdx];
+                const pip = landmarks[pipIdx];
+                const mcp = landmarks[mcpIdx];
+                
+                // 计算指尖到PIP的距离
+                const tipToPipDist = Math.sqrt(
+                    Math.pow(tip.x - pip.x, 2) + 
+                    Math.pow(tip.y - pip.y, 2)
+                );
+                
+                // 计算PIP到MCP的距离（作为参考）
+                const pipToMcpDist = Math.sqrt(
+                    Math.pow(pip.x - mcp.x, 2) + 
+                    Math.pow(pip.y - mcp.y, 2)
+                );
+                
+                // 判断手指是否伸出：指尖在PIP上方，且距离足够（至少是PIP到MCP距离的60%）
+                const isExtended = tip.y < pip.y && tipToPipDist > pipToMcpDist * 0.6;
+                
+                if (i === 1) state.index = isExtended;
+                else if (i === 2) state.middle = isExtended;
+                else if (i === 3) state.ring = isExtended;
+                else if (i === 4) state.pinky = isExtended;
+            }
+            
+            // 计算总数
+            if (state.thumb) state.totalCount++;
+            if (state.index) state.totalCount++;
+            if (state.middle) state.totalCount++;
+            if (state.ring) state.totalCount++;
+            if (state.pinky) state.totalCount++;
+            
+            return state;
+        }
+        
+        
+        function drawConnectors(ctx, points, connections, options) {
+            ctx.strokeStyle = options.color || '#00FF00';
+            ctx.lineWidth = options.lineWidth || 2;
+            ctx.beginPath();
+            for (const [start, end] of connections) {
+                if (start < points.length && end < points.length) {
+                    ctx.moveTo(points[start].x * 320, points[start].y * 240);
+                    ctx.lineTo(points[end].x * 320, points[end].y * 240);
+                }
+            }
+            ctx.stroke();
+        }
+        
+        function drawLandmarks(ctx, points, options) {
+            ctx.fillStyle = options.color || '#FF0000';
+            for (const point of points) {
+                ctx.beginPath();
+                ctx.arc(point.x * 320, point.y * 240, options.radius || 2, 0, 2 * Math.PI);
+                ctx.fill();
+            }
         }
 
         init();
@@ -1172,6 +1977,47 @@ class MHRViewerHandler(http.server.SimpleHTTPRequestHandler):
                 self.send_response(404)
                 self.end_headers()
 
+        elif parsed.path.startswith('/mediapipe/'):
+            # 提供本地MediaPipe库文件
+            mediapipe_path = parsed.path.replace('/mediapipe/', '')
+            # 构建本地文件路径（相对于viewer.py所在目录）
+            script_dir = Path(__file__).parent.absolute()
+            local_file = script_dir / 'mediapipe' / mediapipe_path
+            
+            # 安全检查：确保文件在mediapipe目录内
+            try:
+                local_file = local_file.resolve()
+                mediapipe_dir = (script_dir / 'mediapipe').resolve()
+                if not str(local_file).startswith(str(mediapipe_dir)):
+                    self.send_response(403)
+                    self.end_headers()
+                    return
+            except:
+                self.send_response(403)
+                self.end_headers()
+                return
+            
+            if local_file.exists() and local_file.is_file():
+                self.send_response(200)
+                # 根据文件扩展名设置Content-Type
+                ext = local_file.suffix.lower()
+                content_types = {
+                    '.js': 'application/javascript',
+                    '.wasm': 'application/wasm',
+                    '.data': 'application/octet-stream',
+                    '.mem': 'application/octet-stream',
+                }
+                content_type = content_types.get(ext, 'application/octet-stream')
+                self.send_header('Content-type', content_type)
+                # 允许CORS（如果需要）
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                with open(local_file, 'rb') as f:
+                    self.wfile.write(f.read())
+            else:
+                self.send_response(404)
+                self.end_headers()
+
         else:
             super().do_GET()
 
@@ -1221,8 +2067,93 @@ def find_free_port(start_port=8080):
     return start_port
 
 
-def start_server(mhr_path, port=8080):
-    """启动HTTP服务器"""
+def generate_self_signed_cert(cert_path, key_path):
+    """生成自签名证书"""
+    try:
+        from cryptography import x509
+        from cryptography.x509.oid import NameOID
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.backends import default_backend
+        from cryptography.hazmat.primitives.asymmetric import rsa
+        from cryptography.hazmat.primitives import serialization
+        import datetime
+        import ipaddress
+        
+        # 生成私钥
+        key = rsa.generate_private_key(
+            public_exponent=65537,
+            key_size=2048,
+            backend=default_backend()
+        )
+        
+        # 获取本机IP
+        try:
+            result = subprocess.run(['hostname', '-I'], capture_output=True, text=True)
+            local_ip = result.stdout.strip().split()[0] if result.stdout.strip() else '127.0.0.1'
+        except:
+            local_ip = '127.0.0.1'
+        
+        # 生成证书
+        subject = issuer = x509.Name([
+            x509.NameAttribute(NameOID.COUNTRY_NAME, "CN"),
+            x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, "Beijing"),
+            x509.NameAttribute(NameOID.LOCALITY_NAME, "Beijing"),
+            x509.NameAttribute(NameOID.ORGANIZATION_NAME, "SAM3D Viewer"),
+            x509.NameAttribute(NameOID.COMMON_NAME, "localhost"),
+        ])
+        
+        # 添加 SAN (Subject Alternative Name) 以支持 IP 访问
+        san = x509.SubjectAlternativeName([
+            x509.DNSName("localhost"),
+            x509.DNSName("*.localhost"),
+            x509.IPAddress(ipaddress.ip_address("127.0.0.1")),
+            x509.IPAddress(ipaddress.ip_address(local_ip)),
+        ])
+        
+        cert = x509.CertificateBuilder().subject_name(
+            subject
+        ).issuer_name(
+            issuer
+        ).public_key(
+            key.public_key()
+        ).serial_number(
+            x509.random_serial_number()
+        ).not_valid_before(
+            datetime.datetime.utcnow()
+        ).not_valid_after(
+            datetime.datetime.utcnow() + datetime.timedelta(days=365)
+        ).add_extension(
+            san, critical=False
+        ).sign(key, hashes.SHA256(), default_backend())
+        
+        # 保存私钥
+        with open(key_path, "wb") as f:
+            f.write(key.private_bytes(
+                encoding=serialization.Encoding.PEM,
+                format=serialization.PrivateFormat.TraditionalOpenSSL,
+                encryption_algorithm=serialization.NoEncryption()
+            ))
+        
+        # 保存证书
+        with open(cert_path, "wb") as f:
+            f.write(cert.public_bytes(serialization.Encoding.PEM))
+        
+        print(f"已生成自签名证书:")
+        print(f"  证书: {cert_path}")
+        print(f"  私钥: {key_path}")
+        print(f"  包含 SAN: localhost, 127.0.0.1, {local_ip}")
+        return True
+        
+    except ImportError:
+        print("错误: 需要安装 cryptography 库来生成证书")
+        print("请运行: pip install cryptography")
+        print("或者手动生成证书:")
+        print("  openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 365 -nodes")
+        return False
+
+
+def start_server(mhr_path, port=8080, use_ssl=False, cert_path=None, key_path=None):
+    """启动HTTP/HTTPS服务器"""
     mhr_path = Path(mhr_path)
     mhr_files = find_mhr_files(mhr_path)
     video_info = load_video_info(mhr_path)
@@ -1249,13 +2180,34 @@ def start_server(mhr_path, port=8080):
     if actual_port != port:
         print(f"端口 {port} 被占用，使用端口 {actual_port}")
 
+    # 获取本机IP
+    try:
+        result = subprocess.run(['hostname', '-I'], capture_output=True, text=True)
+        local_ip = result.stdout.strip().split()[0] if result.stdout.strip() else 'localhost'
+    except:
+        local_ip = 'localhost'
+
     socketserver.TCPServer.allow_reuse_address = True
 
+    protocol = "https" if use_ssl else "http"
+    
     with socketserver.TCPServer(("", actual_port), MHRViewerHandler) as httpd:
-        url = f"http://localhost:{actual_port}"
+        # 如果启用SSL，包装socket
+        if use_ssl:
+            context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            context.load_cert_chain(certfile=cert_path, keyfile=key_path)
+            httpd.socket = context.wrap_socket(httpd.socket, server_side=True)
+        
+        local_url = f"{protocol}://localhost:{actual_port}"
+        remote_url = f"{protocol}://{local_ip}:{actual_port}"
+        
         print(f"\n{'='*50}")
         print(f"网页查看器已启动!")
-        print(f"打开浏览器访问: {url}")
+        print(f"\n本地访问: {local_url}")
+        print(f"远程访问: {remote_url}")
+        if use_ssl:
+            print(f"\n[HTTPS模式] 已启用安全连接")
+            print(f"注意: 自签名证书需要在浏览器中手动信任")
         if video_info:
             print(f"\n播放控制快捷键:")
             print(f"  空格键: 播放/暂停")
@@ -1269,7 +2221,8 @@ def start_server(mhr_path, port=8080):
         print(f"\n按 Ctrl+C 停止服务器")
         print(f"{'='*50}\n")
 
-        threading.Timer(1.0, lambda: webbrowser.open(url)).start()
+        # 只在本地时自动打开浏览器
+        threading.Timer(1.0, lambda: webbrowser.open(local_url)).start()
 
         try:
             httpd.serve_forever()
@@ -1295,6 +2248,26 @@ def main():
         default=8080,
         help="服务器端口 (默认: 8080)",
     )
+    parser.add_argument(
+        "--ssl",
+        action="store_true",
+        help="启用HTTPS (需要证书)",
+    )
+    parser.add_argument(
+        "--cert",
+        default="cert.pem",
+        help="SSL证书文件路径 (默认: cert.pem)",
+    )
+    parser.add_argument(
+        "--key",
+        default="key.pem",
+        help="SSL私钥文件路径 (默认: key.pem)",
+    )
+    parser.add_argument(
+        "--auto-cert",
+        action="store_true",
+        help="自动生成自签名证书 (需要cryptography库)",
+    )
 
     args = parser.parse_args()
 
@@ -1304,7 +2277,32 @@ def main():
         print("\n错误: 请指定 --mhr 或 --mhr_folder 参数")
         return
 
-    start_server(mhr_path, args.port)
+    # 处理SSL证书
+    use_ssl = args.ssl or args.auto_cert
+    cert_path = None
+    key_path = None
+    
+    if use_ssl:
+        cert_path = Path(args.cert)
+        key_path = Path(args.key)
+        
+        # 如果证书不存在且指定了自动生成
+        if args.auto_cert and (not cert_path.exists() or not key_path.exists()):
+            if not generate_self_signed_cert(str(cert_path), str(key_path)):
+                print("无法生成证书，退出")
+                return
+        
+        # 检查证书文件是否存在
+        if not cert_path.exists():
+            print(f"错误: 证书文件不存在: {cert_path}")
+            print("请使用 --auto-cert 自动生成，或手动创建证书:")
+            print("  openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 365 -nodes")
+            return
+        if not key_path.exists():
+            print(f"错误: 私钥文件不存在: {key_path}")
+            return
+
+    start_server(mhr_path, args.port, use_ssl, str(cert_path) if cert_path else None, str(key_path) if key_path else None)
 
 
 if __name__ == "__main__":

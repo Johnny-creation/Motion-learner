@@ -13,6 +13,7 @@
 ### 处理能力
 - **单图处理** - 一键从图片重建完整3D人体模型
 - **视频处理** - 逐帧提取动作序列，支持跳帧加速
+- **远程上传** - HTTPS 加密连接，支持手机/局域网远程上传
 
 ### 交互式查看器
 - **360度自由视角** - 鼠标拖动任意角度观察
@@ -164,6 +165,48 @@ python demo.py --port 8080 --output ./output --host 0.0.0.0
 | `--output` | `./output` | 输出目录 |
 | `--host` | `0.0.0.0` | 监听地址（0.0.0.0 允许远程访问） |
 
+### 方式三：远程上传服务（支持 HTTPS）
+
+适用于需要通过局域网或远程访问的场景，支持 HTTPS 加密连接。
+
+> 💡 当需要从手机等移动设备上传文件，或者在非本机浏览器中使用摄像头功能时，浏览器要求必须使用 HTTPS 连接。
+
+```bash
+# 启动 HTTPS 服务（自动生成自签名证书）
+python test_upload.py --auto-cert
+
+# 指定端口
+python test_upload.py --port 8080 --auto-cert
+
+# 使用自定义证书
+python test_upload.py --ssl --cert my_cert.pem --key my_key.pem
+```
+
+**启动后:**
+1. 浏览器访问 `https://your_ip:8080`（首次需信任自签名证书）
+2. 拖拽或点击上传图片/视频文件
+3. 点击"开始建模"查看实时处理进度
+4. 处理完成后自动跳转到 3D 查看器
+
+**参数说明:**
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `--port` | `8080` | 服务器端口 |
+| `--host` | `0.0.0.0` | 监听地址 |
+| `--auto-cert` | - | 自动生成自签名证书（推荐） |
+| `--ssl` | - | 启用 HTTPS（需配合 --cert 和 --key） |
+| `--cert` | `test_cert.pem` | SSL 证书文件路径 |
+| `--key` | `test_key.pem` | SSL 私钥文件路径 |
+
+**支持的文件格式:**
+- **图片**: JPG, JPEG, PNG
+- **视频**: MP4, AVI, MOV, MKV, WEBM
+
+**注意事项:**
+- 首次使用 `--auto-cert` 需要安装 `cryptography` 库：`pip install cryptography`
+- 自签名证书需要在浏览器中手动信任（点击"高级" → "继续访问"）
+- 上传的文件保存在 `./test_uploads/时间戳/` 目录下
+
 ---
 
 ## 🎮 查看器操作指南
@@ -285,6 +328,7 @@ python demo.py --port 8080 --output ./output --host 0.0.0.0
 ```
 sam-3d-body/
 ├── demo.py                   # 🌟 Web Demo 应用（推荐）
+├── test_upload.py            # 📱 远程上传服务（支持 HTTPS）
 ├── process_image.py          # 图片处理脚本
 ├── process_video.py          # 视频处理脚本
 ├── viewer.py                 # 网页3D查看器
@@ -293,7 +337,8 @@ sam-3d-body/
 ├── checkpoints/
 │   ├── sam-3d-body-dinov3/  # SAM 3D Body 模型 (~2.7GB)
 │   └── moge-2-vitl-normal/  # MoGe 模型 (~1.3GB)
-└── output/                   # 输出目录
+├── output/                   # 输出目录
+└── test_uploads/             # 远程上传文件保存目录
 ```
 
 **输出文件说明:**
