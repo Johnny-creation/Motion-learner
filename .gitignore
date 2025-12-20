@@ -121,6 +121,6 @@ sandbox*
 *.sh
 
 # data
-*.jpg
+folders
 *.mp4
 *.json
