@@ -74,7 +74,7 @@
 
   ### 🎄 模型浏览器（批量浏览）
 
-  **脚本说明：** 当前仓库未包含下文使用的 `run_tree.py`。这一目录页命令需要课程演示版本的对应脚本；使用仓库现有文件查看模型时，请运行 `viewer.py`，具体见[指南](docs/visualization-interaction.md)。
+  **脚本说明：** 当前仓库未包含下文使用的 `run_tree.py`，因此这一目录页命令暂不能按 README 直接复现，需要维护者补充脚本或说明替代入口。仓库现有的 `viewer.py` 用法及验证范围见[指南](docs/visualization-interaction.md)。
 
   浏览所有已处理的模型，交互式3D体验：
 
