@@ -40,7 +40,7 @@ MediaPipe Hands 提供手部关键点，查看器在其输出上判断手指状�
 | 双手握拳 | 恢复相机视角并锁定 |
 | 双手张开 | 启用自动旋转 |
 
-同一手势的重复触发受冷却时间和状态记录限制。单手处理还调用稳定性判断，避免瞬间识别结果直接触发操作。具体阈值与行为以当前代码为准；课程报告或较早 README 中的映射可能与当前版本不同。
+代码通过冷却时间和状态记录限制重复触发，单手处理调用 `isGestureStable` 检查最近三条历史记录。这是代码中的过滤逻辑，实际误触发率与交互稳定性尚未在本文中实测。具体阈值与行为以当前代码为准；课程报告或较早 README 中的映射可能与当前版本不同。
 
 鼠标和键盘也可用于检查显示与播放：鼠标旋转、缩放视角；视频模式中使用空格播放或暂停、方向键切换帧、Shift 加方向键跨帧移动。这些控制便于在摄像头或手势依赖未就绪时先验证三维结果。
 
@@ -59,7 +59,7 @@ MediaPipe Hands 提供手部关键点，查看器在其输出上判断手指状�
 
 课程报告与 README 还记录了粒子圣诞树模型目录页：使用 GLSL 粒子形变组织三维展示，以 MediaPipe 握拳控制粒子收拢、捏合选择模型，并结合场景光照、材质与雪景效果进行演示。
 
-当前仓库文件列表未包含 README 中引用的 `run_tree.py`，因此上述目录页需要课程演示版本的对应脚本才能运行。当前仓库中的可运行查看入口是 `viewer.py`。补充目录页脚本时，应一并提供依赖、输入目录、启动命令和演示结果。
+核对本次文档所依据的仓库版本后，未发现 README 中引用的 `run_tree.py`。因此这一目录页的启动方式暂不能按 README 直接复现；需要维护者补充脚本或说明替代入口。`viewer.py` 是仓库现有的查看器脚本，本文未完成运行验证。补充目录页脚本时，应一并提供依赖、输入目录、启动命令和演示结果。
 
 ## 课程报告中的个人分工
 
@@ -68,3 +68,10 @@ MediaPipe Hands 提供手部关键点，查看器在其输出上判断手指状�
 | 周子涵 / Zihan Zhou（Z. Zhou，[ZhouZihan37](https://github.com/ZhouZihan37)） | 团队中的可视化引擎与交互；GLSL 粒子与拓扑形变；MediaPipe 握拳收拢与捏合选择；3D 查看器场景渲染；交互稳定性优化。 |
 
 该分工来自课程项目报告。人体重建基于 SAM 3D Body 等已有模型，视觉模型、重建服务和交互展示共同构成项目流程。
+
+## 来源与验证范围
+
+- 当前查看器说明依据仓库版本 `10c2df70a43e67aa6532a3bdcc5ebe2009d7aed1` 的 [viewer.py](https://github.com/Johnny-creation/Motion-learner/blob/10c2df70a43e67aa6532a3bdcc5ebe2009d7aed1/viewer.py)：`createMeshes`、`processSingleHandGesture`、`processTwoHandsGesture`、`isGestureStable`、键盘事件处理及命令行参数解析。
+- 目录页功能说明参考该版本的 [README](https://github.com/Johnny-creation/Motion-learner/blob/10c2df70a43e67aa6532a3bdcc5ebe2009d7aed1/README.md) 与课程项目报告；当前仓库中没有对应目录页脚本，因此未进行源码或运行验证。
+- 项目名称来自课程报告 *Choreo-Verse: A Generative and Reconstructive 3D Vision Framework for Dance Learning* 第 1 页；个人职责来自第 9 页 Table III（Team Member Responsibilities）中的 `Z. Zhou` 行。该报告是成员提供的 `Motion_learner (2).pdf`，未随此 PR 上传；分工按报告转述，未通过 Git 提交历史逐项归属。
+- “交互检查方法”是建议的验证步骤，不表示已经执行或通过。本文未测量精度、延迟、误触发率或性能提升，也未将模型训练归属于周子涵。
