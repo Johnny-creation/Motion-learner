@@ -1,0 +1,77 @@
+# 三维查看器与手势交互指南
+
+本文说明 Motion-learner 当前仓库的三维显示与手势交互流程，帮助运行演示、理解模块并检查交互结果。启动与手势映射依据 [viewer.py](../viewer.py)；课程目录页的功能另在下文说明。
+
+## 输入与启动
+
+查看器读取已生成的 MHR JSON 文件，使用 Three.js 显示人体网格、线框和骨架。视频目录模式支持查看连续帧与控制播放。人体重建步骤见 [README](../README.md)，查看已有结果时无需重新运行重建。
+
+在仓库目录中使用 Python 运行以下命令，将路径替换为实际文件或视频结果目录：
+
+```bash
+# 单个重建结果
+python viewer.py --mhr output/your_image.mhr.json --port 8080
+
+# 包含视频帧与元数据的结果目录
+python viewer.py --mhr_folder output/your_video/ --port 8080
+```
+
+程序会打开本地网页；若未自动打开，请使用终端输出的访问地址。端口被占用时，程序可能选择其他端口，因此以终端实际显示的地址为准。
+
+Three.js 依赖在浏览器中加载。启动隔空手势还需要浏览器能加载 MediaPipe Hands 资源、访问摄像头并获得权限。远程访问时，摄像头通常需要 HTTPS；查看器提供 `--ssl --cert --key` 和 `--auto-cert` 参数，自动生成证书需要 `cryptography`。
+
+## 从模型数据到三维场景
+
+当前 `createMeshes` 流程将顶点写入 `THREE.BufferGeometry`，用面片索引建立网格并计算顶点法向量。人体实体使用 `MeshPhongMaterial`；骨架通过关节点球体与骨骼连线显示。场景使用环境光、方向光和参考网格，并按模型范围调整相机。
+
+顶点与关键点需要遵循查看器使用的坐标转换。检查坐标变换时，应同时观察网格和骨架，避免只修正其中一种表示而使两者错位。
+
+## 当前查看器的手势映射
+
+MediaPipe Hands 提供手部关键点，查看器在其输出上判断手指状态，再将手势映射为相机或显示控制。手势逻辑见 `processSingleHandGesture`、`processTwoHandsGesture` 和 `recognizeSimpleGesture`。
+
+| 手势 | 当前 viewer.py 中的操作 |
+| --- | --- |
+| 仅大拇指伸出并满足方向与长度判断 | 放大模型 |
+| 仅小拇指伸出并满足方向与长度判断 | 缩小模型 |
+| 向左指 | 向左旋转视角 |
+| 向右指 | 向右旋转视角 |
+| V 字手势 | 切换显示模式 |
+| 双手握拳 | 恢复相机视角并锁定 |
+| 双手张开 | 启用自动旋转 |
+
+代码通过冷却时间和状态记录限制重复触发，单手处理调用 `isGestureStable` 检查最近三条历史记录。这是代码中的过滤逻辑，实际误触发率与交互稳定性尚未在本文中实测。具体阈值与行为以当前代码为准；课程报告或较早 README 中的映射可能与当前版本不同。
+
+鼠标和键盘也可用于检查显示与播放：鼠标旋转、缩放视角；视频模式中使用空格播放或暂停、方向键切换帧、Shift 加方向键跨帧移动。这些控制便于在摄像头或手势依赖未就绪时先验证三维结果。
+
+## 交互检查方法
+
+1. 先加载一个已生成的结果，确认网格、骨架和相机范围正确。
+2. 再打开摄像头，确认手部关键点反馈可见。
+3. 分别演示单手与双手操作，并观察显示变化是否符合上表。
+4. 检查短暂手势切换、保持手势和移出摄像头时是否发生误触发或连续重复操作。
+5. 在视频模式中切换帧，检查视角锁定、播放和手势控制是否互相干扰。
+6. 保存复现步骤及演示片段；评估稳定性时记录实际观察，不将界面效果直接表述为模型精度或性能提升。
+
+若手势无法启动，优先检查浏览器摄像头权限、设备是否被其他应用占用以及 MediaPipe 资源加载是否成功；若人体不显示，先检查输入 JSON 与目录结构，再检查浏览器控制台。
+
+## 课程目录页与粒子交互
+
+课程报告与 README 还记录了粒子圣诞树模型目录页：使用 GLSL 粒子形变组织三维展示，以 MediaPipe 握拳控制粒子收拢、捏合选择模型，并结合场景光照、材质与雪景效果进行演示。
+
+核对本次文档所依据的仓库版本后，未发现 README 中引用的 `run_tree.py`。因此这一目录页的启动方式暂不能按 README 直接复现；需要维护者补充脚本或说明替代入口。`viewer.py` 是仓库现有的查看器脚本，本文未完成运行验证。补充目录页脚本时，应一并提供依赖、输入目录、启动命令和演示结果。
+
+## 课程报告中的个人分工
+
+| 成员 | 课程报告记录的职责 |
+| --- | --- |
+| 周子涵 / Zihan Zhou（Z. Zhou，[ZhouZihan37](https://github.com/ZhouZihan37)） | 团队中的可视化引擎与交互；GLSL 粒子与拓扑形变；MediaPipe 握拳收拢与捏合选择；3D 查看器场景渲染；交互稳定性优化。 |
+
+该分工来自课程项目报告。人体重建基于 SAM 3D Body 等已有模型，视觉模型、重建服务和交互展示共同构成项目流程。
+
+## 来源与验证范围
+
+- 当前查看器说明依据仓库版本 `10c2df70a43e67aa6532a3bdcc5ebe2009d7aed1` 的 [viewer.py](https://github.com/Johnny-creation/Motion-learner/blob/10c2df70a43e67aa6532a3bdcc5ebe2009d7aed1/viewer.py)：`createMeshes`、`processSingleHandGesture`、`processTwoHandsGesture`、`isGestureStable`、键盘事件处理及命令行参数解析。
+- 目录页功能说明参考该版本的 [README](https://github.com/Johnny-creation/Motion-learner/blob/10c2df70a43e67aa6532a3bdcc5ebe2009d7aed1/README.md) 与课程项目报告；当前仓库中没有对应目录页脚本，因此未进行源码或运行验证。
+- 项目名称来自课程报告 *Choreo-Verse: A Generative and Reconstructive 3D Vision Framework for Dance Learning* 第 1 页；个人职责来自第 9 页 Table III（Team Member Responsibilities）中的 `Z. Zhou` 行。该报告是成员提供的 `Motion_learner (2).pdf`，未随此 PR 上传；分工按报告转述，未通过 Git 提交历史逐项归属。
+- “交互检查方法”是建议的验证步骤，不表示已经执行或通过。本文未测量精度、延迟、误触发率或性能提升，也未将模型训练归属于周子涵。
