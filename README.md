@@ -2,6 +2,15 @@
 
   基于 Meta SAM 3D Body 的完整人体3D重建解决方案，从单张图片或视频生成高精度3D人体模型，通过交互式网页查看器实现360度动作分析。
 
+  ## 可视化与交互文档
+
+  [三维查看器与手势交互指南](docs/visualization-interaction.md)说明当前 `viewer.py` 的输入、启动方式、手势映射和交互检查方法，并区分当前仓库实现与课程目录页演示。
+
+  ## 课程项目分工
+
+  本仓库是课程项目 *Choreo-Verse: A Generative and Reconstructive 3D Vision Framework for Dance Learning* 中的人体重建与交互展示部分。课程报告中，**周子涵 / Zihan Zhou（Z. Zhou，[ZhouZihan37](https://github.com/ZhouZihan37)）**承担团队中的可视化与交互工作：GLSL 粒子形变、MediaPipe 握拳与捏合交互、3D 查看器场景渲染，以及交互稳定性优化。更多模块说明见[指南](docs/visualization-interaction.md)。
+
+
   ## 效果展示
 
   ### 静态场景分析
@@ -64,6 +73,8 @@
   4. 使用鼠标和键盘交互式查看
 
   ### 🎄 模型浏览器（批量浏览）
+
+  **脚本说明：** 当前仓库未包含下文使用的 `run_tree.py`。这一目录页命令需要课程演示版本的对应脚本；使用仓库现有文件查看模型时，请运行 `viewer.py`，具体见[指南](docs/visualization-interaction.md)。
 
   浏览所有已处理的模型，交互式3D体验：
 
